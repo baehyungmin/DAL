@@ -1,0 +1,33 @@
+#################################################################
+Insight 3
+#################################################################
+< 시나리오  - Ahn Sehwan >
+사용자가 뽑은 가장 funny한 레스토랑
+CREATE table review_filtered_funny_anse as
+SELECT business_id, name, address, cat_exploded, funny, state, user_id, date from review_filtered_nam ORDER BY funny DESC;
+
+select business_id, sum(funny) as sumfunny from review_filtered_funny_anse group by business_id, name, address
+
+>>> from pyspark.sql.functions import desc
+>>> dffun2 = spark.sql("select * from review_filtered_funny_anse")
+>>> dffun3 = dffun2.filter("sumfunny > 100").sort(desc('sumfunny'))
+
++--------------------+--------------------+--------------------+--------+
+|         business_id|                name|             address|sumfunny|
++--------------------+--------------------+--------------------+--------+
+|DN0b4Un8--Uf6SEWL...|Amy's Baking Company|7366 E Shea Blvd,...| 49396.0|
+|RESDUcs7fIiihp38-...|    Bacchanal Buffet|3570 S Las Vegas ...|  5330.0|
+|K7lWdNUhCbcnEvI0N...|        Wicked Spoon|3708 Las Vegas Bl...|  4000.0|
+|Iq7NqQD-sESu3vr9i...|Butters Pancakes ...|8390 E Via De Ven...|  3901.0|
+|iCQpiavjjPzJ5_3gP...|        Secret Pizza|The Cosmopolitan ...|  3636.0|
+|2weQS-RnoOBhb1KsH...|          The Buffet|3131 Las Vegas Bl...|  3379.0|
+|DkYS3arLOhA8si5uU...|    Earl of Sandwich|3667 Las Vegas Bl...|  3290.0|
+|4JNXUYY8wbaaDmk3B...|        Mon Ami Gabi|3655 Las Vegas Bl...|  2831.0|
+|eLFfWcdb7VkqNyTON...|Gen Korean BBQ House|1300 W Sunset Rd,...|  2775.0|
+|cYwJA2A6I12KNkm2r...| Gordon Ramsay BurGR|3667 Las Vegas Bl...|  2765.0|
++--------------------+--------------------+--------------------+--------+
+
+
+
+
+
