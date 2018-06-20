@@ -4,4 +4,4 @@
 
 Big Data Trainging 교육과정동안 진행한 교육 내용과 Sample 분석 자료를 공유함
 - AWS에 EMR cluster를 구성하여 Hive, Spark 등으로 데이터 처리를 실습
-
+- yelp data를 사용하여 데이터 분석 및 Hive/Spark 성능 
