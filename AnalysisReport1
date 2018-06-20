@@ -1,0 +1,236 @@
+====================================
+Step 1. 문제정의 
+===================================
+가장 최고의 레스토랑 TOP 30 Report
+1) 좋은 평점 (star > 3.7) 이상을 많이 받을수록 좋은 레스토랑
+2) 2017년도 평가가 2016년보다 좋은평점이 더 많이 나온 레스토랑
+
+
+===================================
+Step 2. 데이터 전처리
+===================================
+1.1 Business --> restaurants
+1.2 Inner Join Review + restaurants
+
+CREATE TABLE JOIN_REVIEW_REST2 
+ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe' 
+STORED AS TEXTFILE
+LOCATION '/user/hive/yelp/TABLE' 
+AS
+SELECT a.stars as a_stars, a.`date` as a_date, re.* 
+  from review a JOIN restaurants re
+ON (a.business_id = re.business_id) 
+where a.`date` >= '2016';
+
+[DESC JOIN_REVIEW_REST2]
+a_stars                 string                  from deserializer
+a_date                  string                  from deserializer
+address                 string                  from deserializer
+business_id             string                  from deserializer
+categories              array<string>           from deserializer
+city                    string                  from deserializer
+hours                   struct<friday:string,monday:string,saturday:string,sunday:string,thursday:string,tuesday:string,wednesday:string>       from deserializer
+is_open                 int                     from deserializer
+latitude                double                  from deserializer
+longitude               double                  from deserializer
+name                    string                  from deserializer
+neighborhood            string                  from deserializer
+postal_code             string                  from deserializer
+review_count            int                     from deserializer
+stars                   double                  from deserializer
+state                   string                  from deserializer
+attributes              struct<accept...
+cat_exploded            string                  from deserializer
+
+===================================
+Step 3. HIVE를 활용한 데이터 찾기
+===================================
+select name,
+       rank() over(order by ysum desc) as rating_rank,
+       rank() over(order by ygap desc) as hot_rank
+from (
+    select business_id, name, nvl(kv['2017'], 0) - nvl(kv['2016'], 0) as ygap, 
+                                       nvl(kv['2017'], 0) + nvl(kv['2016'], 0) as ysum
+    from (
+        select business_id, name, map(yyyy, star_cnt) as kv
+        from (
+            select business_id, city||'_'||name as name, substr(a_date, 1, 4) as yyyy, 
+                     count(*) as star_cnt
+            from JOIN_REVIEW_REST2
+           where a_stars > 3.71
+           group by business_id, city, name, substr(a_date, 1, 4)
+        ) T
+    ) TT
+) TTT
+order by rating_rank
+limit 30;
+
+Query ID = hadoop_20180620022951_ace06b00-f4e6-4c85-98b4-2734480b21b2
+Total jobs = 1
+Launching Job 1 out of 1
+Status: Running (Executing on YARN cluster with App id application_1529392216137_0019)
+
+----------------------------------------------------------------------------------------------
+        VERTICES      MODE        STATUS  TOTAL  COMPLETED  RUNNING  PENDING  FAILED  KILLED
+----------------------------------------------------------------------------------------------
+Map 1 .......... container     SUCCEEDED     26         26        0        0       0       0
+Reducer 2 ...... container     SUCCEEDED      2          2        0        0       0       0
+Reducer 3 ...... container     SUCCEEDED      1          1        0        0       0       0
+Reducer 4 ...... container     SUCCEEDED      1          1        0        0       0       0
+Reducer 5 ...... container     SUCCEEDED      1          1        0        0       0       0
+----------------------------------------------------------------------------------------------
+VERTICES: 05/05  [==========================>>] 100%  ELAPSED TIME: 47.66 s
+----------------------------------------------------------------------------------------------
+OK
+Las Vegas_Gangnam Asian BBQ Dining      1       64289
+Las Vegas_Yardbird Southern Table & Bar 2       1
+Las Vegas_Gordon Ramsay BurGR		3       64288
+Las Vegas_Bacchanal Buffet		4       2
+Las Vegas_Bacchanal Buffet		5       64287
+Las Vegas_Mon Ami Gabi			6       3
+Las Vegas_Mon Ami Gabi			7       64286
+Las Vegas_Hash House A Go Go		8       64285
+Las Vegas_Hash House A Go Go		9       4
+Las Vegas_El Dorado Cantina		10      64284
+Las Vegas_Lotus of Siam			11      64283
+Las Vegas_Shake Shack			12      64282
+Las Vegas_Yardbird Southern Table & Bar 13      64281
+Las Vegas_Egg & I			14      64280
+Las Vegas_Eggslut			15      5
+Las Vegas_Nacho Daddy			16      6
+Las Vegas_Gangnam Asian BBQ Dining      17      7
+Las Vegas_Gordon Ramsay Burger		18      8
+Las Vegas_HEXX kitchen + bar		19      9
+Las Vegas_Momofuku Las Vegas		20      10
+Las Vegas_Mr Mamas			21      11
+Las Vegas_Tacos El Gordo		22      12
+Las Vegas_Echo & Rig			23      13
+Henderson_Gen Korean BBQ House		24      64279
+Las Vegas_Soho SushiBurrito		25      64278
+Las Vegas_Tacos El Gordo		26      64277
+Las Vegas_Egg & I			26      14
+Las Vegas_Mr Mamas			28      64276
+Toronto_Pai Northern Thai Kitchen       29      15
+Las Vegas_Secret Pizza			30      64275
+Time taken: 48.512 seconds, Fetched: 30 row(s)
+
+
+===================================
+Step 4. Spark - HIVE를 활용한 데이터 찾기
+===================================
+scala> val dfSpark = spark.sqlContext.sql("select name, rank() over(order by ysum desc) as rating_rank, rank() over(order by ygap desc) as hot_rank from ( select business_id, name, nvl(kv['2017'], 0) - nvl(kv['2016'], 0) as ygap, nvl(kv['2017'], 0) + nvl(kv['2016'], 0) as ysum from ( select business_id, name, map(yyyy, star_cnt) as kv from ( select business_id, city||'_'||name as name, substr(a_date, 1, 4) as yyyy, count(*) as star_cnt, avg(a_stars) as star_avg from JOIN_REVIEW_REST2 where a_stars > 3.71 group by business_id, city, name, substr(a_date, 1, 4) ) T ) TT ) TTT order by rating_rank limit 30")
+dfSpark: org.apache.spark.sql.DataFrame = [name: string, rating_rank: int ... 1 more field]
+
+scala> spark.time(dfSpark.show(30, false))
+18/06/20 03:53:36 WARN WindowExec: No Partition Defined for Window operation! Moving all data to a single partition, this can cause serious performance degradation.
+18/06/20 03:53:36 WARN WindowExec: No Partition Defined for Window operation! Moving all data to a single partition, this can cause serious performance degradation.
++---------------------------------------+-----------+--------+
+|name                                   |rating_rank|hot_rank|
++---------------------------------------+-----------+--------+
+|Las Vegas_Gangnam Asian BBQ Dining     |1          |64289   |
+|Las Vegas_Yardbird Southern Table & Bar|2          |1       |
+|Las Vegas_Gordon Ramsay BurGR          |3          |64288   |
+|Las Vegas_Bacchanal Buffet             |4          |2       |
+|Las Vegas_Bacchanal Buffet             |5          |64287   |
+|Las Vegas_Mon Ami Gabi                 |6          |3       |
+|Las Vegas_Mon Ami Gabi                 |7          |64286   |
+|Las Vegas_Hash House A Go Go           |8          |64285   |
+|Las Vegas_Hash House A Go Go           |9          |4       |
+|Las Vegas_El Dorado Cantina            |10         |64284   |
+|Las Vegas_Lotus of Siam                |11         |64283   |
+|Las Vegas_Shake Shack                  |12         |64282   |
+|Las Vegas_Yardbird Southern Table & Bar|13         |64281   |
+|Las Vegas_Egg & I                      |14         |64280   |
+|Las Vegas_Eggslut                      |15         |5       |
+|Las Vegas_Nacho Daddy                  |16         |6       |
+|Las Vegas_Gangnam Asian BBQ Dining     |17         |7       |
+|Las Vegas_Gordon Ramsay Burger         |18         |8       |
+|Las Vegas_HEXX kitchen + bar           |19         |9       |
+|Las Vegas_Momofuku Las Vegas           |20         |10      |
+|Las Vegas_Mr Mamas                     |21         |11      |
+|Las Vegas_Tacos El Gordo               |22         |12      |
+|Las Vegas_Echo & Rig                   |23         |13      |
+|Henderson_Gen Korean BBQ House         |24         |64279   |
+|Las Vegas_Soho SushiBurrito            |25         |64278   |
+|Las Vegas_Egg & I                      |26         |14      |
+|Las Vegas_Tacos El Gordo               |26         |64277   |
+|Las Vegas_Mr Mamas                     |28         |64276   |
+|Toronto_Pai Northern Thai Kitchen      |29         |15      |
+|Las Vegas_Secret Pizza                 |30         |64275   |
++---------------------------------------+-----------+--------+
+
+Time taken: 136 ms
+dfSpark.cache();
+spark.time(dfSpark.show(30, false))
+
+===================================
+Step 5. Native Spark 로 성능향상시키기
+===================================
+val dfReview   = spark.sqlContext.jsonFile("s3://yelp07/review")
+val dfBusiness = spark.sqlContext.jsonFile("s3://yelp07/business")
+
+// city + name -> name, categories -> unnest
+val df1 = dfBusiness.select(dfBusiness("business_id").as("business_id2"), concat(dfBusiness("name"),dfBusiness("name")).as("name"), explode(dfBusiness("categories")).as("exp_category"))
+val df2 = df1.filter(df1("exp_category") === "Restaurants")
+df2.count     // 54618
+df2.select("business_id2").distinct.count  // 54618
+
+// Review 와 Restaurants JOIN
+val dfTotal = dfReview.join(df2, dfReview("business_id") === df2("business_id2"))
+dfTotal.printSchema
+root
+ |-- business_id: string (nullable = true)
+ |-- cool: long (nullable = true)
+ |-- date: string (nullable = true)
+ |-- funny: long (nullable = true)
+ |-- review_id: string (nullable = true)
+ |-- stars: long (nullable = true)
+ |-- text: string (nullable = true)
+ |-- useful: long (nullable = true)
+ |-- user_id: string (nullable = true)
+ |-- business_id2: string (nullable = true)
+ |-- name: string (nullable = true)
+ |-- exp_category: string (nullable = true)
+
+dfTotal.count  // 3221419
+dfTotal.cache()
+// group by
+dfTotal.groupBy(col("business_id"), col("name"), substring(col("date"), 1, 4).as("yyyy")).count().show(5)
+val df3 = dfTotal.groupBy(col("business_id"), col("name"), substring(col("date"), 1, 4).as("yyyy"))
+
+... 삽질 시작 ....
+그런데 Rank() Over (Partition by .... order by...)를 구현하는것이 좋을까?
+
+
+===================================
+Step 6. Spark + HIVE를 적절히 결합하기
+===================================
+val dfReview   = spark.sqlContext.jsonFile("s3://yelp07/review")
+val dfBusiness = spark.sqlContext.jsonFile("s3://yelp07/business")
+
+val df1 = dfBusiness.select(dfBusiness("business_id").as("business_id2"), concat(dfBusiness("name"),dfBusiness("name")).as("name"), explode(dfBusiness("categories")).as("exp_category"))
+val df2 = df1.filter(df1("exp_category") === "Restaurants")
+val dfTotal = dfReview.join(df2, dfReview("business_id") === df2("business_id2"))
+dfTotal.write.parquet("hdfs:///user/hive/warehouse/JOIN_REVIEW_REST3.parquet") 
+
+to Create HIVE Table
+dfTotal.createOrReplaceTempView("my_temp_table");
+spark.sql("drop table if exists JOIN_REVIEW_REST3");
+spark.sql("create table JOIN_REVIEW_REST3 as select * from my_temp_table");
+
+
+import org.apache.spark.sql.hive.HiveContext;
+val sqlContext = new org.apache.spark.sql.hive.HiveContext(sc)
+// HiveContext sqlContext = new org.apache.spark.sql.hive.HiveContext(sc.sc());
+dfTotal.write.saveAsTable("TEST3");
+
+Failed to connect to server: ip-172-31-19-20.ap-northeast-2.compute.internal/172.31.19.20:8020: try once and fail.
+java.net.NoRouteToHostException: No route to host
+
+... 잘 안됨 ...
+
+hive>select count(*) from review   <- 너무 느림
+scala>spark.sqlContext.sql("select count(*) from review").show  <- 업청 빠름
+HIVE를 통한 warehouse 생성루 spark sql을 통한 데이터 처리 방식
+
+
